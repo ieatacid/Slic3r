@@ -548,6 +548,10 @@ sla::SupportConfig make_support_cfg(const SLAPrintObjectConfig& c) {
     scfg.head_penetration_mm = c.support_head_penetration.getFloat();
     scfg.head_width_mm = c.support_head_width.getFloat();
     scfg.object_elevation_mm = c.support_object_elevation.getFloat();
+
+    if( scfg.object_elevation_mm < c.pad_wall_thickness.getFloat() )
+        scfg.object_elevation_mm = 0.0;
+
     scfg.bridge_slope = c.support_critical_angle.getFloat() * PI / 180.0 ;
     scfg.max_bridge_length_mm = c.support_max_bridge_length.getFloat();
     scfg.max_pillar_link_distance_mm = c.support_max_pillar_link_distance.getFloat();
@@ -575,6 +579,8 @@ sla::PoolConfig make_pool_config(const SLAPrintObjectConfig& c) {
     pcfg.edge_radius_mm = c.pad_edge_radius.getFloat();
     pcfg.max_merge_distance_mm = c.pad_max_merge_distance.getFloat();
     pcfg.min_wall_height_mm = c.pad_wall_height.getFloat();
+    pcfg.obj_embedded =
+            c.support_object_elevation.getFloat() < pcfg.min_wall_thickness_mm;
 
     return pcfg;
 }

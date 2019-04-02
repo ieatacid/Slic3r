@@ -6,6 +6,9 @@
 #include "ClipperUtils.hpp"
 #include "Tesselate.hpp"
 
+#include "libnest2d/backends/clipper/geometries.hpp"
+#include "libnest2d/placers/nfpplacer.hpp"
+
 // For debugging:
 //#include <fstream>
 //#include <libnest2d/tools/benchmark.h>
@@ -180,9 +183,10 @@ Contour3D walls(const Polygon& lower, const Polygon& upper,
 }
 
 /// Offsetting with clipper and smoothing the edges into a curvature.
-void offset(ExPolygon& sh, coord_t distance) {
+void offset(ExPolygon& sh, coord_t distance, bool edgerounding = true) {
     using ClipperLib::ClipperOffset;
     using ClipperLib::jtRound;
+    using ClipperLib::jtMiter;
     using ClipperLib::etClosedPolygon;
     using ClipperLib::Paths;
     using ClipperLib::Path;
@@ -199,11 +203,13 @@ void offset(ExPolygon& sh, coord_t distance) {
         return;
     }
 
+    auto jointype = edgerounding? jtRound : jtMiter;
+
     ClipperOffset offs;
     offs.ArcTolerance = 0.01*mm(1);
     Paths result;
-    offs.AddPath(ctour, jtRound, etClosedPolygon);
-    offs.AddPaths(holes, jtRound, etClosedPolygon);
+    offs.AddPath(ctour, jointype, etClosedPolygon);
+    offs.AddPaths(holes, jointype, etClosedPolygon);
     offs.Execute(result, static_cast<double>(distance));
 
     // Offsetting reverts the orientation and also removes the last vertex
@@ -579,6 +585,78 @@ void base_plate(const TriangleMesh &mesh, ExPolygons &output, float h,
         auto&& smp = o.simplify(0.1/SCALING_FACTOR);
         output.insert(output.end(), smp.begin(), smp.end());
     }
+}
+
+void offset_with_breakstick_holes(ExPolygon& expoly,
+                                  double padding,
+                                  double stride,
+                                  double stick_width)
+{
+    namespace clpr = ClipperLib;
+
+    // Summon our main tool from libnest2d
+    using EdgeCache = libnest2d::placers::EdgeCache<clpr::Polygon>;
+
+    // We do the basic offsetting first
+    const bool dont_round_edges = false;
+    offset(expoly, coord_t(padding / SCALING_FACTOR), dont_round_edges);
+
+    // Ok, we need the edge-cache...
+    // go around the polygon and add additional vertices. Four points for
+    // each breakstick. Care must be taken for the right orientation of the
+    // added points.
+
+    // We included libnest2d clipper backend so PolygonImpl is compatible with
+    // clipper Path
+    clpr::Polygon poly;
+    poly.Contour = Slic3rMultiPoint_to_ClipperPath(expoly.contour);
+
+    EdgeCache ecache(poly);
+
+    // still in clipper coordinates
+    double circ = ecache.circumference() * SCALING_FACTOR;
+    auto count = unsigned(circ / stride);
+    double q = 1.0 / circ;
+    double dwidth = stick_width * q ;
+    auto swidth   = coord_t(stick_width / SCALING_FACTOR);
+    auto spadding = coord_t(padding / SCALING_FACTOR);
+    bool polygon_is_closed = true;
+
+    ClipperLib::Clipper clipper;
+    clipper.AddPath(poly.Contour, clpr::ptSubject, polygon_is_closed);
+
+    for(unsigned i = 0; i < count; ++i) {
+        double loc = i * stride * q;
+
+        clpr::IntPoint p1 = ecache.coords(loc - dwidth);
+        clpr::IntPoint pq = ecache.coords(loc + dwidth); // just for the normal
+
+        Vec2d p1d(p1.X, p1.Y); p1d *= SCALING_FACTOR;
+        Vec2d pqd(pq.X, pq.Y); pqd *= SCALING_FACTOR;
+        auto d = (pqd - p1d).normalized();               // direction vector
+        Vec2d n(-d(Y), d(X));                            // normal
+
+        // Now we have the two points
+
+        clpr::Polygon stick;
+        stick.Contour.emplace_back(p1); // emplace the starting point
+        clpr::IntPoint ds(coord_t(d(X)*swidth), coord_t(d(Y)*swidth));
+        clpr::IntPoint ns(coord_t(n(X)*spadding), coord_t(n(Y)*spadding));
+
+        auto p2 = p1 + ds;
+        auto p3 = p2 + ns;
+        auto p4 = p1 + ns;
+
+        clipper.AddPath({p1, p2, p3, p4}, clpr::ptClip, polygon_is_closed);
+    }
+
+    ClipperLib::Paths sol;
+    clipper.Execute(clpr::ctDifference, sol);
+
+//    SVG svg("bridgestick_plate.svg");
+//    svg.draw(sol, 1);
+//    svg.Close();
+    if(!sol.empty()) expoly.contour = ClipperPath_to_Slic3rPolygon(sol.front());
 }
 
 void create_base_pool(const ExPolygons &ground_layer, TriangleMesh& out,
