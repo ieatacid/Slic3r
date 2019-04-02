@@ -76,6 +76,20 @@ wxString file_wildcards(FileType file_type, const std::string &custom_extension)
 
 static std::string libslic3r_translate_callback(const char *s) { return wxGetTranslation(wxString(s, wxConvUTF8)).utf8_str().data(); }
 
+wxDEFINE_EVENT(EVT_DPI_CHANGED, wxCommandEvent);
+
+static void register_dpi_event()
+{
+#ifdef WIN32
+    // enum { WM_DPICHANGED = 0x02e0 };
+
+    wxWindow::MSWRegisterMessageHandler(WM_DPICHANGED, [](wxWindow *win, WXUINT nMsg, WXWPARAM wParam, WXLPARAM lParam) {
+        printf("WM_DPICHANGED: %d\n", (int)(wParam & 0xffff));
+        return true;
+    });
+#endif
+}
+
 IMPLEMENT_APP(GUI_App)
 
 GUI_App::GUI_App()
@@ -148,6 +162,8 @@ bool GUI_App::OnInit()
 	} catch (const std::exception &ex) {
         show_error(nullptr, ex.what());
 	}
+
+    register_dpi_event();
 
     // Let the libslic3r know the callback, which will translate messages on demand.
     Slic3r::I18N::set_translate_callback(libslic3r_translate_callback);

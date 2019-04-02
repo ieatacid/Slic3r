@@ -67,6 +67,8 @@ class Tab;
 
 static wxString dots("…", wxConvUTF8);
 
+wxDECLARE_EVENT(EVT_DPI_CHANGED, wxCommandEvent);
+
 class GUI_App : public wxApp
 {
     bool            m_initialized { false };
