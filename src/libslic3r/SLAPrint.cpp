@@ -579,7 +579,7 @@ sla::PoolConfig make_pool_config(const SLAPrintObjectConfig& c) {
     pcfg.edge_radius_mm = c.pad_edge_radius.getFloat();
     pcfg.max_merge_distance_mm = c.pad_max_merge_distance.getFloat();
     pcfg.min_wall_height_mm = c.pad_wall_height.getFloat();
-    pcfg.obj_embedded =
+    pcfg.embed_object =
             c.support_object_elevation.getFloat() < pcfg.min_wall_thickness_mm;
 
     return pcfg;

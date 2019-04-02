@@ -29,7 +29,7 @@ struct PoolConfig {
     double max_merge_distance_mm = 50;
     double edge_radius_mm = 1;
     double wall_slope = std::atan(1.0);          // Universal constant for Pi/4
-    bool   obj_embedded = false;
+    bool   embed_object = false;
 
     ThrowOnCancel throw_on_cancel = [](){};
 
@@ -53,7 +53,7 @@ void create_base_pool(const ExPolygons& base_plate,
 /// min_wall_thickness and it should be corrected in the future. This method
 /// will return the correct value for further processing.
 inline double get_pad_elevation(const PoolConfig& cfg) {
-    return cfg.obj_embedded? 0.0 : cfg.min_wall_thickness_mm;
+    return cfg.embed_object? 0.0 : cfg.min_wall_thickness_mm;
 }
 
 inline double get_pad_fullheight(const PoolConfig& cfg) {
