@@ -76,16 +76,21 @@ wxString file_wildcards(FileType file_type, const std::string &custom_extension)
 
 static std::string libslic3r_translate_callback(const char *s) { return wxGetTranslation(wxString(s, wxConvUTF8)).utf8_str().data(); }
 
-wxDEFINE_EVENT(EVT_DPI_CHANGED, wxCommandEvent);
-
 static void register_dpi_event()
 {
 #ifdef WIN32
-    // FIXME: Windows < 8.1
-    // enum { WM_DPICHANGED = 0x02e0 };
+    enum { WM_DPICHANGED_ = 0x02e0 };
 
-    wxWindow::MSWRegisterMessageHandler(WM_DPICHANGED, [](wxWindow *win, WXUINT nMsg, WXWPARAM wParam, WXLPARAM lParam) {
+    wxWindow::MSWRegisterMessageHandler(WM_DPICHANGED_, [](wxWindow *win, WXUINT nMsg, WXWPARAM wParam, WXLPARAM lParam) {
         printf("WM_DPICHANGED: %d\n", (int)(wParam & 0xffff));
+
+        const int dpi = wParam & 0xffff;
+        const auto rect = reinterpret_cast<PRECT>(lParam);
+        const wxRect wxrect(wxPoint(rect->top, rect->left), wxPoint(rect->bottom, rect->right));
+
+        DpiChangedEvent evt(EVT_DPI_CHANGED, dpi, wxrect);
+        win->GetEventHandler()->AddPendingEvent(evt);
+
         return true;
     });
 #endif

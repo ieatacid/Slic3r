@@ -32,9 +32,11 @@ namespace Slic3r {
 namespace GUI {
 
 MainFrame::MainFrame() :
-wxFrame(NULL, wxID_ANY, SLIC3R_BUILD, wxDefaultPosition, wxDefaultSize, wxDEFAULT_FRAME_STYLE, "mainframe"),
+DPIFrame(NULL, wxID_ANY, SLIC3R_BUILD, wxDefaultPosition, wxDefaultSize, wxDEFAULT_FRAME_STYLE, "mainframe"),
         m_printhost_queue_dlg(new PrintHostQueueDialog(this))
 {
+    printf("scale at constructor time: %f\n", scale_factor());
+
     // Load the icon either from the exe, or from the ico file.
 #if _WIN32
     {
@@ -250,6 +252,11 @@ bool MainFrame::can_delete() const
 bool MainFrame::can_delete_all() const
 {
     return (m_plater != nullptr) ? !m_plater->model().objects.empty() : false;
+}
+
+void MainFrame::on_dpi_changed(const wxRect &suggested_rect)
+{
+    printf("on_dpi_changed: %f\n", scale_factor());
 }
 
 void MainFrame::init_menubar()

@@ -8,6 +8,7 @@
 
 #include <boost/optional.hpp>
 
+#include <wx/frame.h>
 #include <wx/dialog.h>
 #include <wx/event.h>
 #include <wx/filedlg.h>
@@ -28,7 +29,50 @@ wxTopLevelWindow* find_toplevel_parent(wxWindow *window);
 
 void on_window_geometry(wxTopLevelWindow *tlw, std::function<void()> callback);
 
+enum { DPI_DEFAULT = 96 };
+
 int get_dpi_for_window(wxWindow *window);
+
+struct DpiChangedEvent : public wxEvent {
+    int dpi;
+    wxRect rect;
+
+    DpiChangedEvent(wxEventType eventType, int dpi, wxRect rect)
+        : wxEvent(0, eventType), dpi(dpi), rect(rect)
+    {}
+
+    virtual wxEvent *Clone() const
+    {
+        return new DpiChangedEvent(*this);
+    }
+};
+
+wxDECLARE_EVENT(EVT_DPI_CHANGED, DpiChangedEvent);
+
+class DPIFrame : public wxFrame
+{
+public:
+    DPIFrame(wxWindow *parent, wxWindowID id, const wxString &title,
+        const wxPoint &pos=wxDefaultPosition,
+        const wxSize &size=wxDefaultSize,
+        long style=wxDEFAULT_FRAME_STYLE,
+        const wxString &name=wxFrameNameStr);
+    virtual ~DPIFrame();
+
+    float scale_factor() const { return m_scale_factor; }
+    int em_unit() const { return m_em_unit; }
+    int font_size() const { return m_font_size; }
+
+protected:
+    virtual void on_dpi_changed(const wxRect &suggested_rect) = 0;
+
+private:
+    int m_scale_factor;
+    int m_em_unit;
+    int m_font_size;
+
+    void recalc_font();
+};
 
 class DPIDialog : public wxDialog
 {
@@ -43,8 +87,9 @@ public:
     float scale_factor() const { return m_scale_factor; }
     int em_unit() const { return m_em_unit; }
     int font_size() const { return m_font_size; }
+
 protected:
-    virtual void on_dpi_changed();
+    virtual void on_dpi_changed(const wxRect &suggested_rect) = 0;
 
 private:
     int m_scale_factor;

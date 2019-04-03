@@ -53,25 +53,34 @@ void on_window_geometry(wxTopLevelWindow *tlw, std::function<void()> callback)
 #endif
 }
 
-enum { DPI_DEFAULT = 96 };
+wxDEFINE_EVENT(EVT_DPI_CHANGED, DpiChangedEvent);
 
 #ifdef _WIN32
-template<const wchar_t *DLL, class F> F winapi_get_function(const char* fn_name) {
-    static HINSTANCE dll = LoadLibraryExW(DLL, nullptr, 0);
+template<class F> typename F::FN winapi_get_function(const wchar_t *dll, const char *fn_name) {
+    static HINSTANCE dll_handle = LoadLibraryExW(dll, nullptr, 0);
 
-    if (dll == nullptr) { return nullptr; }
-    return (F)GetProcAddress(dll, fn_name);
+    if (dll_handle == nullptr) { return nullptr; }
+    return (F::FN)GetProcAddress(dll_handle, fn_name);
 }
 #endif
 
 int get_dpi_for_window(wxWindow *window)
 {
 #ifdef _WIN32
-    typedef HRESULT (WINAPI *GetDpiForWindow_t)(HWND hwnd);
-    typedef HRESULT (WINAPI *GetDpiForMonitor_t)(HMONITOR hmonitor, MONITOR_DPI_TYPE dpiType, UINT *dpiX, UINT *dpiY);
+    enum MONITOR_DPI_TYPE_ {
+        // This enum is inlined here to avoid build-time dependency
+        MDT_EFFECTIVE_DPI_ = 0,
+        MDT_ANGULAR_DPI_ = 1,
+        MDT_RAW_DPI_ = 2,
+        MDT_DEFAULT_ = MDT_EFFECTIVE_DPI_,
+    };
 
-    static GetDpiForWindow_t GetDpiForWindow_fn = winapi_get_function<"User32.dll">("GetDpiForWindow");
-    static GetDpiForMonitor_t GetDpiForMonitor_fn = winapi_get_function<"User32.dll">("GetDpiForMonitor");
+    // Need strong types for winapi_get_function() to work
+    struct GetDpiForWindow_t { typedef HRESULT (WINAPI *FN)(HWND hwnd); };
+    struct GetDpiForMonitor_t { typedef HRESULT (WINAPI *FN)(HMONITOR hmonitor, MONITOR_DPI_TYPE_ dpiType, UINT *dpiX, UINT *dpiY); };
+
+    static auto GetDpiForWindow_fn = winapi_get_function<GetDpiForWindow_t>(L"User32.dll", "GetDpiForWindow");
+    static auto GetDpiForMonitor_fn = winapi_get_function<GetDpiForMonitor_t>(L"Shcore.dll", "GetDpiForMonitor");
 
     const HWND hwnd = window->GetHandle();
 
@@ -80,25 +89,17 @@ int get_dpi_for_window(wxWindow *window)
         return GetDpiForWindow_fn(hwnd);
     } else if (GetDpiForMonitor_fn != nullptr) {
         // We're on Windows 8.1, we have per-system DPI
-        // Note: MonitorFromWindow() is available on all Windows,
-        // but we inline MONITOR_DPI_TYPE enum here to not depend on Win8.1 headers.
-
-        enum MONITOR_DPI_TYPE {
-            MDT_EFFECTIVE_DPI = 0,
-            MDT_ANGULAR_DPI = 1,
-            MDT_RAW_DPI = 2,
-            MDT_DEFAULT = MDT_EFFECTIVE_DPI,
-        };
+        // Note: MonitorFromWindow() is available on all Windows.
 
         const HMONITOR monitor = MonitorFromWindow(hwnd, MONITOR_DEFAULTTONEAREST);
         UINT dpiX;
         UINT dpiY;
-        return GetDpiForMonitor_fn(monitor, MDT_EFFECTIVE_DPI, &dpiX, &dpiY) == S_OK ? dpiX : DPI_DEFAULT;
+        return GetDpiForMonitor_fn(monitor, MDT_EFFECTIVE_DPI_, &dpiX, &dpiY) == S_OK ? dpiX : DPI_DEFAULT;
     } else {
         // We're on Windows earlier than 8.1, use DC
 
-        const HDC dc = GetDC(hwnd);
-        if (dc == NULL) { return DPI_DEFAULT; }
+        const HDC hdc = GetDC(hwnd);
+        if (hdc == NULL) { return DPI_DEFAULT; }
         return GetDeviceCaps(hdc, LOGPIXELSX);
     }
 #elif defined __linux__
@@ -112,25 +113,50 @@ int get_dpi_for_window(wxWindow *window)
 
 
 
-DPIDialog::DPIDialog(wxWindow* parent, wxWindowID id, const wxString& title, const wxPoint& pos,
-        const wxSize& size, long style, const wxString& name)
-    : wxDialog(parent, id, title, pos, size, style, name)
+DPIFrame::DPIFrame(wxWindow *parent, wxWindowID id, const wxString &title, const wxPoint &pos,
+        const wxSize &size, long style, const wxString &name)
+    : wxFrame(parent, id, title, pos, size, style, name)
 {
     m_scale_factor = (float)get_dpi_for_window(this) / (float)DPI_DEFAULT;
+    recalc_font();
 
+    Bind(EVT_DPI_CHANGED, [this](const DpiChangedEvent &evt) {
+        m_scale_factor = (float)evt.dpi / (float)DPI_DEFAULT;
+        on_dpi_changed(evt.rect);
+    });
+}
+
+DPIFrame::~DPIFrame() {}
+
+void DPIFrame::recalc_font()
+{
     wxClientDC dc(this);
     const auto metrics = dc.GetFontMetrics();
     m_font_size = metrics.height;
     m_em_unit = metrics.averageWidth;
 }
 
-DPIDialog::~DPIDialog() {}
+DPIDialog::DPIDialog(wxWindow* parent, wxWindowID id, const wxString& title, const wxPoint& pos,
+        const wxSize& size, long style, const wxString& name)
+    : wxDialog(parent, id, title, pos, size, style, name)
+{
+    m_scale_factor = (float)get_dpi_for_window(this) / (float)DPI_DEFAULT;
+    recalc_font();
 
-void DPIDialog::on_dpi_changed() {}
+    Bind(EVT_DPI_CHANGED, [this](const DpiChangedEvent &evt) {
+        m_scale_factor = (float)evt.dpi / (float)DPI_DEFAULT;
+        on_dpi_changed(evt.rect);
+    });
+}
+
+DPIDialog::~DPIDialog() {}
 
 void DPIDialog::recalc_font()
 {
-    //
+    wxClientDC dc(this);
+    const auto metrics = dc.GetFontMetrics();
+    m_font_size = metrics.height;
+    m_em_unit = metrics.averageWidth;
 }
 
 
