@@ -81,6 +81,7 @@ wxDEFINE_EVENT(EVT_DPI_CHANGED, wxCommandEvent);
 static void register_dpi_event()
 {
 #ifdef WIN32
+    // FIXME: Windows < 8.1
     // enum { WM_DPICHANGED = 0x02e0 };
 
     wxWindow::MSWRegisterMessageHandler(WM_DPICHANGED, [](wxWindow *win, WXUINT nMsg, WXWPARAM wParam, WXLPARAM lParam) {

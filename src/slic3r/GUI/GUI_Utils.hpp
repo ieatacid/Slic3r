@@ -8,6 +8,7 @@
 
 #include <boost/optional.hpp>
 
+#include <wx/dialog.h>
 #include <wx/event.h>
 #include <wx/filedlg.h>
 #include <wx/gdicmn.h>
@@ -26,6 +27,32 @@ namespace GUI {
 wxTopLevelWindow* find_toplevel_parent(wxWindow *window);
 
 void on_window_geometry(wxTopLevelWindow *tlw, std::function<void()> callback);
+
+int get_dpi_for_window(wxWindow *window);
+
+class DPIDialog : public wxDialog
+{
+public:
+    DPIDialog(wxWindow* parent, wxWindowID id, const wxString& title,
+             const wxPoint& pos = wxDefaultPosition,
+             const wxSize& size = wxDefaultSize,
+             long style = wxDEFAULT_DIALOG_STYLE,
+             const wxString& name = wxDialogNameStr);
+    virtual ~DPIDialog();
+
+    float scale_factor() const { return m_scale_factor; }
+    int em_unit() const { return m_em_unit; }
+    int font_size() const { return m_font_size; }
+protected:
+    virtual void on_dpi_changed();
+
+private:
+    int m_scale_factor;
+    int m_em_unit;
+    int m_font_size;
+
+    void recalc_font();
+};
 
 
 class EventGuard

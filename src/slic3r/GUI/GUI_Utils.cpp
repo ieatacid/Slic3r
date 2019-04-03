@@ -4,9 +4,14 @@
 #include <boost/lexical_cast.hpp>
 #include <boost/format.hpp>
 
+#ifdef _WIN32
+#include <Windows.h>
+#endif
+
 #include <wx/toplevel.h>
 #include <wx/sizer.h>
 #include <wx/checkbox.h>
+#include <wx/dcclient.h>
 
 #include "libslic3r/Config.hpp"
 
@@ -46,6 +51,86 @@ void on_window_geometry(wxTopLevelWindow *tlw, std::function<void()> callback)
         evt.Skip();
     });
 #endif
+}
+
+enum { DPI_DEFAULT = 96 };
+
+#ifdef _WIN32
+template<const wchar_t *DLL, class F> F winapi_get_function(const char* fn_name) {
+    static HINSTANCE dll = LoadLibraryExW(DLL, nullptr, 0);
+
+    if (dll == nullptr) { return nullptr; }
+    return (F)GetProcAddress(dll, fn_name);
+}
+#endif
+
+int get_dpi_for_window(wxWindow *window)
+{
+#ifdef _WIN32
+    typedef HRESULT (WINAPI *GetDpiForWindow_t)(HWND hwnd);
+    typedef HRESULT (WINAPI *GetDpiForMonitor_t)(HMONITOR hmonitor, MONITOR_DPI_TYPE dpiType, UINT *dpiX, UINT *dpiY);
+
+    static GetDpiForWindow_t GetDpiForWindow_fn = winapi_get_function<"User32.dll">("GetDpiForWindow");
+    static GetDpiForMonitor_t GetDpiForMonitor_fn = winapi_get_function<"User32.dll">("GetDpiForMonitor");
+
+    const HWND hwnd = window->GetHandle();
+
+    if (GetDpiForWindow_fn != nullptr) {
+        // We're on Windows 10, we have per-screen DPI settings
+        return GetDpiForWindow_fn(hwnd);
+    } else if (GetDpiForMonitor_fn != nullptr) {
+        // We're on Windows 8.1, we have per-system DPI
+        // Note: MonitorFromWindow() is available on all Windows,
+        // but we inline MONITOR_DPI_TYPE enum here to not depend on Win8.1 headers.
+
+        enum MONITOR_DPI_TYPE {
+            MDT_EFFECTIVE_DPI = 0,
+            MDT_ANGULAR_DPI = 1,
+            MDT_RAW_DPI = 2,
+            MDT_DEFAULT = MDT_EFFECTIVE_DPI,
+        };
+
+        const HMONITOR monitor = MonitorFromWindow(hwnd, MONITOR_DEFAULTTONEAREST);
+        UINT dpiX;
+        UINT dpiY;
+        return GetDpiForMonitor_fn(monitor, MDT_EFFECTIVE_DPI, &dpiX, &dpiY) == S_OK ? dpiX : DPI_DEFAULT;
+    } else {
+        // We're on Windows earlier than 8.1, use DC
+
+        const HDC dc = GetDC(hwnd);
+        if (dc == NULL) { return DPI_DEFAULT; }
+        return GetDeviceCaps(hdc, LOGPIXELSX);
+    }
+#elif defined __linux__
+    // TODO
+    return DPI_DEFAULT;
+#elif defined __APPLE__
+    // TODO
+    return DPI_DEFAULT;
+#endif
+}
+
+
+
+DPIDialog::DPIDialog(wxWindow* parent, wxWindowID id, const wxString& title, const wxPoint& pos,
+        const wxSize& size, long style, const wxString& name)
+    : wxDialog(parent, id, title, pos, size, style, name)
+{
+    m_scale_factor = (float)get_dpi_for_window(this) / (float)DPI_DEFAULT;
+
+    wxClientDC dc(this);
+    const auto metrics = dc.GetFontMetrics();
+    m_font_size = metrics.height;
+    m_em_unit = metrics.averageWidth;
+}
+
+DPIDialog::~DPIDialog() {}
+
+void DPIDialog::on_dpi_changed() {}
+
+void DPIDialog::recalc_font()
+{
+    //
 }
 
 
