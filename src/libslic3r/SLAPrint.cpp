@@ -707,11 +707,23 @@ void SLAPrint::process()
                      &po.m_model_slices,
                      [this](){ throw_if_canceled(); });
 
+        const double correction_offset =
+                m_printer_config.printer_correction.empty() ?
+                    std::nan("") : m_printer_config.printer_correction.get_at(0);
+
         auto mit = slindex_it;
         for(size_t id = 0;
             id < po.m_model_slices.size() && mit != po.m_slice_index.end();
             id++)
         {
+            if(! std::isnan(correction_offset)) {
+                ExPolygons& layer_sl = po.m_model_slices[id];
+                for(ExPolygon& expoly : layer_sl) {
+                    ExPolygons res = offset_ex(expoly, float(correction_offset / SCALING_FACTOR));
+                    if(! res.empty()) expoly = std::move(res.front());
+                }
+            }
+
             mit->set_model_slice_idx(po, id); ++mit;
         }
     };
@@ -1025,17 +1037,32 @@ void SLAPrint::process()
         const double height             = m_printer_config.display_height.getFloat() / SCALING_FACTOR;
         const double display_area       = width*height;
 
+        const double correction_offset =
+                m_printer_config.printer_correction.empty() ?
+                    std::nan("") : m_printer_config.printer_correction.get_at(0);
+
         // get polygons for all instances in the object
         auto get_all_polygons =
-                [flpXY](const ExPolygons& input_polygons,
+                [flpXY, correction_offset](const ExPolygons& input_polygons,
                         const std::vector<SLAPrintObject::Instance>& instances,
                         bool is_lefthanded)
         {
             ClipperPolygons polygons;
             polygons.reserve(input_polygons.size() * instances.size());
 
-            for (const ExPolygon& polygon : input_polygons) {
-                if(polygon.contour.empty()) continue;
+            for (const ExPolygon& rawpolygon : input_polygons) {
+                if(rawpolygon.contour.empty()) continue;
+
+//                // Do the correction offset if it was prescribed:
+//                ExPolygons offresult = std::isnan(correction_offset)?
+//                            ExPolygons() : offset_ex(rawpolygon,
+//                                                     float(correction_offset));
+
+//                // The polygon we shall work with:
+//                const ExPolygon& polygon = offresult.empty() ?
+//                            rawpolygon : offresult.front();
+
+                const ExPolygon& polygon = rawpolygon;
 
                 for (size_t i = 0; i < instances.size(); ++i)
                 {
@@ -1285,11 +1312,15 @@ void SLAPrint::process()
         double increment = (slot * sd) / m_printer_input.size();
         double dstatus = m_report_status.status();
 
+//        const double correction_offset =
+//                m_printer_config.printer_correction.empty() ?
+//                    std::nan("") : m_printer_config.printer_correction.get_at(0);
+
         SpinMutex slck;
 
         // procedure to process one height level. This will run in parallel
         auto lvlfn =
-        [this, &slck, &printer, increment, &dstatus, &pst]
+        [this, &slck, &printer, increment, &dstatus, &pst/*, correction_offset*/]
             (unsigned level_id)
         {
             if(canceled()) return;
@@ -1300,7 +1331,27 @@ void SLAPrint::process()
             printer.begin_layer(level_id);
 
             for(const ClipperLib::Polygon& poly : printlayer.transformed_slices())
-                printer.draw_polygon(poly, level_id);
+            {
+//                if(std::isnan(correction_offset))
+                    printer.draw_polygon(poly, level_id);
+//                else { // if the correction offset was given, we do the offset
+
+//                    // Convert the poly to expolygon equivalent
+//                    ExPolygon expoly;
+//                    expoly.contour = ClipperPath_to_Slic3rPolygon(poly.Contour);
+//                    expoly.holes = ClipperPaths_to_Slic3rPolygons(poly.Holes);
+//                    float fcorr_offs = static_cast<float>(correction_offset);
+
+//                    // Do the offsetting
+//                    ExPolygons offresult = offset_ex(expoly, fcorr_offs);
+
+//                    // Check the result and use the first polygon if not empty
+//                    if(!offresult.empty())
+//                        printer.draw_polygon(expoly, level_id);
+//                    else // or the unoffsetted poly of the offsetting failed.
+//                        printer.draw_polygon(poly, level_id);
+//                }
+            }
 
             // Finish the layer for later saving it.
             printer.finish_layer(level_id);
